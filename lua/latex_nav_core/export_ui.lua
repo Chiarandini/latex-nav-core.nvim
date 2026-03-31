@@ -40,6 +40,22 @@ M.open = function(entries, root_path, opts, pre_filled)
 
   local export = require("latex_nav_core.export")
 
+  -- Expand and normalise an output path:
+  --   • ~ and $VAR are expanded
+  --   • bare relative paths (e.g. ".", "subdir") are resolved from cwd
+  --   • if the final path is an existing directory the default filename
+  --     for the chosen format is appended automatically
+  local function resolve_output_path(raw, format)
+    local expanded = vim.fn.expand(raw)
+    if not vim.startswith(expanded, "/") then
+      expanded = vim.fn.getcwd() .. "/" .. expanded
+    end
+    if vim.fn.isdirectory(expanded) == 1 then
+      expanded = expanded .. "/" .. export.default_filename(format)
+    end
+    return expanded
+  end
+
   -- Resolve inclusion/exclusion opts, with pre_filled taking priority ----------
   local inc_line  = pre_filled.line  ~= nil and pre_filled.line  or (opts.include_line  ~= false)
   local inc_title = pre_filled.title ~= nil and pre_filled.title or (opts.include_title ~= false)
@@ -101,7 +117,7 @@ M.open = function(entries, root_path, opts, pre_filled)
   -- Step 2: output path ───────────────────────────────────────────────────────
   local function step_2(format)
     if pre_filled.path then
-      step_3(format, pre_filled.path)
+      step_3(format, resolve_output_path(pre_filled.path, format))
     else
       local root_dir     = vim.fn.fnamemodify(root_path, ":h")
       local default_path = root_dir .. "/" .. export.default_filename(format)
@@ -110,7 +126,7 @@ M.open = function(entries, root_path, opts, pre_filled)
         default = default_path,
       }, function(path)
         if not path or path == "" then return end
-        step_3(format, vim.fn.expand(path))
+        step_3(format, resolve_output_path(path, format))
       end)
     end
   end
