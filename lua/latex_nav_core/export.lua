@@ -255,19 +255,29 @@ M.format_tsv = function(entries, root_path, opts)
   return table.concat(rows, "\n")
 end
 
----Format entries as plain pipe-separated text (mirrors the internal cache format).
----Only `exclude_files` from opts is honoured; field-inclusion flags are ignored
----because the pipe format has a fixed four-column schema.
+---Format entries as plain pipe-separated text.
+---Inclusion flags are honoured: omitted fields are dropped from each row,
+---so the column count may vary from the full four-column cache format.
 ---@param entries table
 ---@param opts    table|nil
 ---@return string
 M.format_txt = function(entries, opts)
   opts = opts or {}
+  local inc_line  = opts.include_line  ~= false
+  local inc_title = opts.include_title ~= false
+  local inc_file  = opts.include_file  ~= false
+
   local filtered = apply_exclusions(entries, opts.exclude_files)
 
   local rows = {}
   for _, e in ipairs(filtered) do
-    table.insert(rows, string.format("%d|%s|%s|%s", e.line, e.id, e.context, e.filename))
+    -- Preserve the original column order: line | id | context | file
+    local cols = {}
+    if inc_line  then table.insert(cols, tostring(e.line)) end
+    table.insert(cols, e.id)
+    if inc_title then table.insert(cols, e.context)  end
+    if inc_file  then table.insert(cols, e.filename) end
+    table.insert(rows, table.concat(cols, "|"))
   end
   return table.concat(rows, "\n")
 end
