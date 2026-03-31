@@ -83,9 +83,11 @@ M.open = function(entries, root_path, opts, pre_filled)
   end
 
   -- Step 3: path style ────────────────────────────────────────────────────────
+  -- Skipped entirely when file paths are excluded from the output (inc_file=false),
+  -- since absolute vs. relative has no effect on the result in that case.
   local function step_3(format, path)
-    if pre_filled.relative ~= nil then
-      do_export(format, path, pre_filled.relative)
+    if not inc_file or pre_filled.relative ~= nil then
+      do_export(format, path, pre_filled.relative or false)
     else
       vim.ui.select({ "Absolute Paths", "Relative Paths" }, {
         prompt = "Path style:",
