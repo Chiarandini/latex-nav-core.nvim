@@ -57,9 +57,15 @@ M.open = function(entries, root_path, opts, pre_filled)
   end
 
   -- Resolve inclusion/exclusion opts, with pre_filled taking priority ----------
-  local inc_line  = pre_filled.line  ~= nil and pre_filled.line  or (opts.include_line  ~= false)
-  local inc_title = pre_filled.title ~= nil and pre_filled.title or (opts.include_title ~= false)
-  local inc_file  = pre_filled.file  ~= nil and pre_filled.file  or (opts.include_file  ~= false)
+  -- NOTE: cannot use `a and b or c` here because b may be the boolean false,
+  -- which causes `a and false` → false, then `false or c` → c (wrong).
+  local function resolve(pf_val, opt_val)
+    if pf_val ~= nil then return pf_val end
+    return opt_val ~= false
+  end
+  local inc_line  = resolve(pre_filled.line,  opts.include_line)
+  local inc_title = resolve(pre_filled.title, opts.include_title)
+  local inc_file  = resolve(pre_filled.file,  opts.include_file)
   local exc_files = pre_filled.exclude_files or opts.exclude_files or {}
 
   -- ── Inner helpers (defined bottom-up so each can call the next) ───────────
