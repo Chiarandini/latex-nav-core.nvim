@@ -19,21 +19,39 @@ local M = {}
 ---  1. vimtex: `vim.b.vimtex.tex` (the main file vimtex has identified)
 ---  2. Current buffer's file     (fallback when vimtex is absent / not active)
 ---
+---The resolved file is then walked up the `subfiles` chain: vimtex in local
+---mode (|g:vimtex_subfile_start_local|) reports the subfile itself as the
+---main file, and a book's main file may in turn be a subfile of a larger
+---collection.  The project root is the top of that chain.
+---
 ---@return string|nil  Absolute path to the root file, or nil if nothing is open.
 M.get_root_file = function()
+  local root
+
   -- vimtex stores project info in the buffer-local variable b:vimtex.
   -- pcall avoids errors when vimtex is not installed or the variable is unset.
   local ok, vimtex = pcall(function() return vim.b.vimtex end)
   if ok and type(vimtex) == "table" then
     local tex = vimtex.tex
     if type(tex) == "string" and tex ~= "" then
-      return vim.fn.fnamemodify(tex, ":p")
+      root = vim.fn.fnamemodify(tex, ":p")
     end
   end
 
-  local filepath = vim.api.nvim_buf_get_name(0)
-  if filepath == "" then return nil end
-  return vim.fn.fnamemodify(filepath, ":p")
+  if not root then
+    local filepath = vim.api.nvim_buf_get_name(0)
+    if filepath == "" then return nil end
+    root = vim.fn.fnamemodify(filepath, ":p")
+  end
+
+  local seen = {}
+  while not seen[root] do
+    seen[root] = true
+    local parent = M.find_root_via_subfiles(root)
+    if not parent then break end
+    root = parent
+  end
+  return root
 end
 
 ---Detect the root file of a LaTeX subfile by parsing
