@@ -83,22 +83,59 @@ end
 
 -- ─── Smart-jump verification ──────────────────────────────────────────────────
 
----Return true if `line` appears to define `label_id`.
+---Whether the `{` at `brace_pos` belongs to a command that points at a label
+---rather than defining one. Every member of the family ends in "ref" (\ref,
+---\cref, \Cref, \eqref, \autoref, \nameref, \pageref, \vref, \labelcref),
+---which is cheaper and more complete than listing them.
+---@param line      string
+---@param brace_pos integer
+---@return boolean
+local function is_reference(line, brace_pos)
+  local cmd = line:sub(1, brace_pos - 1):match("\\(%a+)%*?%s*$")
+  return cmd ~= nil and cmd:lower():sub(-3) == "ref"
+end
+
+---How strongly `line` looks like the definition of `label_id`:
+---  2    the id in full, as in `\label{th:snakeLem}`
+---  1    the bare label a transformation prefixed, as in
+---       `\begin{thm}{snakeLem}{Snake Lemma}` for id "th:snakeLem"
+---  nil  no match, or matches only inside reference commands
 ---
----Two checks are tried in order:
----  1. `{label_id}` — catches `\label{q:sky}` when id = "q:sky", and
----     `\label{th:snakeLem}` when id = "th:snakeLem"
----  2. `{suffix}` — catches `\begin{thm}{...}{snakeLem}` when id = "th:snakeLem"
----     (the prefix was added by a latex-labels transformation; the raw label
----     in the file is just the part after the last colon)
+---The two are worth telling apart because the bare form is ambiguous:
+---`{snakeLem}` also appears in every `\cref{snakeLem}`.
 ---@param line     string
 ---@param label_id string
----@return boolean
-local function line_has_label(line, label_id)
-  if line:find("{" .. label_id .. "}", 1, true) then return true end
+---@return integer|nil
+local function label_match_quality(line, label_id)
+  local function defines(needle)
+    local init = 1
+    while true do
+      local s = line:find("{" .. needle .. "}", init, true)
+      if not s then return false end
+      if not is_reference(line, s) then return true end
+      init = s + 1
+    end
+  end
+
+  if defines(label_id) then return 2 end
   local suffix = label_id:match(":(.+)$")
-  if suffix and line:find("{" .. suffix .. "}", 1, true) then return true end
-  return false
+  if suffix and defines(suffix) then return 1 end
+  return nil
+end
+
+---Whether `candidate` is a better answer than `best`. A full-id match beats a
+---bare one, and among equals the line nearest the cached position wins.
+---
+---Nearest, not first. The window is `window_size` lines on each side, and
+---taking the first match while scanning from the top of it meant a `\cref`
+---anywhere above the theorem won, so a cache stale by a single line sent `gd`
+---to a citation instead of the definition.
+local function better(candidate, best, target_line)
+  if not best then return true end
+  if candidate.quality ~= best.quality then
+    return candidate.quality > best.quality
+  end
+  return math.abs(candidate.line - target_line) < math.abs(best.line - target_line)
 end
 
 ---Search for `label_id` near `target_line` using the Neovim buffer API.
@@ -112,19 +149,22 @@ local function verify_label_in_buffer(bufnr, target_line, label_id, window_size)
   target_line = math.max(1, math.min(target_line, total))
 
   local exact = vim.api.nvim_buf_get_lines(bufnr, target_line - 1, target_line, false)[1]
-  if exact and line_has_label(exact, label_id) then
+  if exact and label_match_quality(exact, label_id) then
     return target_line
   end
 
   local start = math.max(1, target_line - window_size)
   local stop  = math.min(total, target_line + window_size)
   local lines = vim.api.nvim_buf_get_lines(bufnr, start - 1, stop, false)
+  local best
   for i, line in ipairs(lines) do
-    if line_has_label(line, label_id) then
-      return start + i - 1
+    local quality = label_match_quality(line, label_id)
+    if quality then
+      local candidate = { line = start + i - 1, quality = quality }
+      if better(candidate, best, target_line) then best = candidate end
     end
   end
-  return nil
+  return best and best.line or nil
 end
 
 ---Search for `label_id` near `target_line` by streaming the file from disk.
@@ -140,20 +180,23 @@ local function verify_label_in_file(filepath, target_line, label_id, window_size
 
   local search_start = math.max(1, target_line - window_size)
   local search_end   = target_line + window_size
-  local lnum  = 0
-  local found = nil
+  local lnum = 0
+  local best
 
   for line in f:lines() do
     lnum = lnum + 1
     if lnum > search_end then break end
-    if lnum >= search_start and line_has_label(line, label_id) then
-      found = lnum
-      break
+    if lnum >= search_start then
+      local quality = label_match_quality(line, label_id)
+      if quality then
+        local candidate = { line = lnum, quality = quality }
+        if better(candidate, best, target_line) then best = candidate end
+      end
     end
   end
 
   f:close()
-  return found
+  return best and best.line or nil
 end
 
 ---Verify whether `label_id` is still at `target_line` in `filepath`.
