@@ -11,7 +11,7 @@
 
 local M = {}
 
--- ─── Root file detection ──────────────────────────────────────────────────────
+-- Root file detection
 
 ---Determine the LaTeX project root file.
 ---
@@ -81,7 +81,7 @@ M.find_root_via_subfiles = function(filepath)
   return nil
 end
 
--- ─── Smart-jump verification ──────────────────────────────────────────────────
+-- Smart-jump verification
 
 ---Whether the `{` at `brace_pos` belongs to a command that points at a label
 ---rather than defining one. Every member of the family ends in "ref" (\ref,

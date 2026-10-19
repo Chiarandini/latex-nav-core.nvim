@@ -68,7 +68,7 @@ M.open = function(entries, root_path, opts, pre_filled)
   local inc_file  = resolve(pre_filled.file,  opts.include_file)
   local exc_files = pre_filled.exclude_files or opts.exclude_files or {}
 
-  -- ── Inner helpers (defined bottom-up so each can call the next) ───────────
+  -- Inner helpers (defined bottom-up so each can call the next)
 
   local function do_export(format, path, use_relative)
     local export_opts = {
@@ -104,7 +104,7 @@ M.open = function(entries, root_path, opts, pre_filled)
     end
   end
 
-  -- Step 3: path style ────────────────────────────────────────────────────────
+  -- Step 3: path style
   -- Skipped entirely when file paths are excluded from the output (inc_file=false),
   -- since absolute vs. relative has no effect on the result in that case.
   local function step_3(format, path)
@@ -120,7 +120,7 @@ M.open = function(entries, root_path, opts, pre_filled)
     end
   end
 
-  -- Step 2: output path ───────────────────────────────────────────────────────
+  -- Step 2: output path
   local function step_2(format)
     if pre_filled.path then
       step_3(format, resolve_output_path(pre_filled.path, format))
@@ -137,7 +137,7 @@ M.open = function(entries, root_path, opts, pre_filled)
     end
   end
 
-  -- Step 1: format ────────────────────────────────────────────────────────────
+  -- Step 1: format
   if pre_filled.format then
     step_2(pre_filled.format)
   else

@@ -1,6 +1,6 @@
 local M = {}
 
--- ── JSON helpers ──────────────────────────────────────────────────────────────
+-- JSON helpers
 
 ---Escape a value for use as a JSON string literal (including surrounding quotes).
 ---@param s any  Coerced to string.
@@ -16,7 +16,7 @@ local function json_str(s)
     .. '"'
 end
 
--- ── CSV/TSV helpers ───────────────────────────────────────────────────────────
+-- CSV/TSV helpers
 
 ---Escape a value for a CSV field per RFC 4180.
 ---Wraps the field in double-quotes when it contains commas, quotes, or newlines.
@@ -40,7 +40,7 @@ local function tsv_field(s)
   return result
 end
 
--- ── Entry filtering ───────────────────────────────────────────────────────────
+-- Entry filtering
 
 ---Remove entries whose `filename` matches any pattern in `exclude_files`.
 ---@param entries      table   List of { line, id, context, filename }
@@ -59,7 +59,7 @@ local function apply_exclusions(entries, exclude_files)
   return result
 end
 
--- ── Public API ────────────────────────────────────────────────────────────────
+-- Public API
 
 ---Extract the label prefix (the part before the first colon).
 ---Returns an empty string when the id contains no colon.
@@ -110,7 +110,6 @@ M.default_filename = function(format)
   return "project_labels" .. (ext or ".txt")
 end
 
--- ─────────────────────────────────────────────────────────────────────────────
 -- Formatters
 --
 -- All accept:
@@ -123,7 +122,6 @@ end
 --     include_file       = true,
 --     exclude_files      = {},     -- Lua patterns matched against entry.filename
 --   }
--- ─────────────────────────────────────────────────────────────────────────────
 
 ---Format entries as a pretty-printed JSON document.
 ---Field order in each label object: id, type, [title], [file], [line]
@@ -281,8 +279,6 @@ M.format_txt = function(entries, opts)
   end
   return table.concat(rows, "\n")
 end
-
--- ─────────────────────────────────────────────────────────────────────────────
 
 ---Write `content` to `output_path`.
 ---Returns false with an error message when the parent directory does not exist

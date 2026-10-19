@@ -85,7 +85,7 @@ local function scan(filepath, root_dir, config, results, visited)
       table.remove(recent, 1)
     end
 
-    -- ── 1. Recursion via \include / \input / \subfile ─────────────────────
+    -- 1. Recursion via \include / \input / \subfile
     if config.recursive then
       local inc = line:match("\\include%s*{(.-)}")
                or line:match("\\input%s*{(.-)}")
@@ -96,7 +96,7 @@ local function scan(filepath, root_dir, config, results, visited)
       end
     end
 
-    -- ── 2. Pattern matching ───────────────────────────────────────────────
+    -- 2. Pattern matching
     for _, p in ipairs(config.patterns) do
 
       if p.type == "environment" then
