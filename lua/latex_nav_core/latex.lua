@@ -217,12 +217,13 @@ M.verify_or_find_label = function(filepath, target_line, label_id, window_size)
   return verify_label_in_file(filepath, target_line, label_id, window_size)
 end
 
----Verify whether `heading_text` is still at `target_line` in the buffer.
----If not, search +/- `window_size` lines around that position.
+---Find the line holding `heading_text` nearest to `target_line`, searching
+---+/- `window_size` lines. Nearest wins so that repeated titles (two
+---"Exercises" sections) resolve to the one that moved, not the first one.
 ---
 ---Used by cached-headings variants where the cache stores the full, trimmed
 ---line text of each heading (tex / markdown / org). Matching is exact after
----vim.trim — any shift triggers the window search.
+---vim.trim.
 ---
 ---@param bufnr        integer
 ---@param target_line  integer  1-based
@@ -233,17 +234,19 @@ M.verify_or_find_heading = function(bufnr, target_line, heading_text, window_siz
   local total = vim.api.nvim_buf_line_count(bufnr)
   target_line = math.max(1, math.min(target_line, total))
 
-  local exact = vim.api.nvim_buf_get_lines(bufnr, target_line - 1, target_line, false)[1]
-  if exact and vim.trim(exact) == heading_text then
-    return target_line
-  end
-
   local start = math.max(1, target_line - window_size)
   local stop  = math.min(total, target_line + window_size)
   local lines = vim.api.nvim_buf_get_lines(bufnr, start - 1, stop, false)
-  for i, line in ipairs(lines) do
-    if vim.trim(line) == heading_text then
-      return start + i - 1
+  local function matches(lnum)
+    local line = lines[lnum - start + 1]
+    return line ~= nil and vim.trim(line) == heading_text
+  end
+
+  -- Edits above a heading push it down, so below wins a tie.
+  for d = 0, window_size do
+    if matches(target_line + d) then return target_line + d end
+    if d > 0 and target_line - d >= start and matches(target_line - d) then
+      return target_line - d
     end
   end
   return nil
