@@ -50,8 +50,9 @@ stored in its header differs) or when an included file's mtime changed.
 Edits to the scanned file itself are not detected by `load`; call `refresh`
 after them (the pickers do this on save with `auto_update`).
 Lower-level pieces: `cached_headings.parser` (`scan_file`,
-`resolve_latex_headings`, `signature`) and `cached_headings.cache`
-(`get_cache_path`, `read_cache`, `write_cache`, `wipe_all_caches`).
+`resolve_latex_headings`, `validate_latex_headings`, `signature`) and
+`cached_headings.cache` (`get_cache_path`, `read_cache`, `write_cache`,
+`wipe_all_caches`).
 
 ### `latex_nav_core.cache`
 

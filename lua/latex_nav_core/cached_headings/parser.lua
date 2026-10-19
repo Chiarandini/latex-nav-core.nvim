@@ -31,6 +31,28 @@ local INCLUDE_PATTERNS = {
   "^%s*\\subfile%s*{(.-)}",
 }
 
+---Check a user `latex_headings` table: keys are command names (letters
+---only, no backslash), values are positive integers or false.
+---@param headings any
+---@return boolean ok
+---@return string|nil err
+M.validate_latex_headings = function(headings)
+  if type(headings) ~= "table" then
+    return false, "latex_headings must be a table, got " .. type(headings)
+  end
+  for name, level in pairs(headings) do
+    if type(name) ~= "string" or not name:match("^%a+$") then
+      return false, string.format("latex_headings key %s is not a command name; "
+        .. "use letters only, without the backslash (e.g. bonussection = 3)", vim.inspect(name))
+    end
+    if level ~= false and not (type(level) == "number" and level >= 1 and level % 1 == 0) then
+      return false, string.format("latex_headings.%s must be a positive integer or false, got %s",
+        name, vim.inspect(level))
+    end
+  end
+  return true, nil
+end
+
 ---Merge `overrides` over the built-in LaTeX headings. A `false` value
 ---removes the command.
 ---@param overrides table<string, integer|false>|nil
