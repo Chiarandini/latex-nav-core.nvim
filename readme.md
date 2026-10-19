@@ -1,20 +1,63 @@
 # latex-nav-core.nvim
 
-Shared backend library for
-[telescope-latex-labels.nvim](https://github.com/Chiarandini/telescope-latex-reference.nvim)
+Shared backend library for the label and heading pickers:
+[snacks-latex-labels.nvim](https://github.com/Chiarandini/snacks-latex-labels.nvim),
+[snacks-cached-headings.nvim](https://github.com/Chiarandini/snacks-cached-headings.nvim),
+[telescope-latex-references](https://github.com/Chiarandini/telescope-latex-references),
 and
 [telescope-cached-headings.nvim](https://github.com/Chiarandini/telescope-cached-headings.nvim).
 
-Not intended for direct use — install it as a dependency of those plugins.
+Not intended for direct use; install it as a dependency of those plugins.
 
 ## What it provides
 
+### `latex_nav_core.cached_headings`
+
+Heading scanner and on-disk cache behind both heading pickers.
+
+```lua
+local headings = require("latex_nav_core.cached_headings")
+
+local opts = {
+  include_starred        = false,
+  scan_includes          = false,  -- LaTeX only: follow \input, \include, \subfile
+  recursive_limit        = 5,
+  ignore_include_pattern = "",
+  latex_headings         = { bonussection = 3, part = false },  -- merged over the built-ins
+}
+
+-- From the cache when it is fresh for `opts`; otherwise rescan and rewrite it.
+-- `err` is set only when a rescan could not write the cache.
+local entries, cache_path, meta, err = headings.load("/abs/main.tex", "tex", opts, "global")
+
+-- Always rescan.
+local entries, cache_path, meta, err = headings.refresh("/abs/main.tex", "tex", opts, "global")
+```
+
+Each entry is `{ text, title, line, level, kind, starred, source_file }`.
+`kind` is the LaTeX command name, or `h<level>` for Markdown and Org.
+`source_file` is relative to the root file's directory, `""` for the root.
+
+The built-in LaTeX levels are `part` 1, `chapter` 2, `section` 3,
+`subsection` 4, `subsubsection` 5. `latex_headings` maps a command name to
+a level, or to `false` to drop a built-in. A heading's title is its first
+mandatory argument; one optional `[...]` argument is skipped, nested and
+escaped braces are kept, and a title that wraps onto the next line keeps its
+first line.
+
+A cache is stale when it was scanned with different `opts` (the signature
+stored in its header differs) or when an included file's mtime changed.
+Edits to the scanned file itself are not detected by `load`; call `refresh`
+after them (the pickers do this on save with `auto_update`).
+Lower-level pieces: `cached_headings.parser` (`scan_file`,
+`resolve_latex_headings`, `signature`) and `cached_headings.cache`
+(`get_cache_path`, `read_cache`, `write_cache`, `wipe_all_caches`).
+
 ### `latex_nav_core.cache`
 
-Parameterised cache-path computation and bulk-delete utilities shared by both
-plugins. Both plugins delegate their `get_cache_path` and `wipe_all_caches`
-calls here; the only difference is the subdirectory name and file extension
-passed as arguments.
+Parameterized cache-path computation and bulk-delete utilities shared by the
+label and heading caches. Each passes its own subdirectory name and file
+extension.
 
 ```lua
 local core = require("latex_nav_core.cache")
@@ -29,8 +72,8 @@ local count, err = core.wipe_all_caches("global", "cached_labels", ".labels")
 ### `latex_nav_core.snacks`
 
 Generic [Snacks.nvim](https://github.com/folke/snacks.nvim) picker launcher
-used by both plugins to open their Snacks pickers without duplicating the
-availability check or keymap wiring.
+used by the Snacks pickers so they share the availability check and keymap
+wiring.
 
 ```lua
 local core = require("latex_nav_core.snacks")
@@ -92,14 +135,14 @@ local export_ui = require("latex_nav_core.export_ui")
 -- All prompts shown (fully interactive)
 export_ui.open(entries, root_path, opts)
 
--- Partially pre-filled — only missing prompts are shown
+-- Partially pre-filled: only missing prompts are shown
 export_ui.open(entries, root_path, opts, {
   format   = "json",
   path     = ".",         -- directories and relative paths are resolved
   relative = false,
 })
 
--- Fully pre-filled — no UI at all, runs immediately
+-- Fully pre-filled: no UI at all, runs immediately
 export_ui.open(entries, root_path, opts, {
   format   = "csv",
   path     = "~/labels.csv",
@@ -119,10 +162,9 @@ Add as a dependency alongside the plugins that require it:
 
 ```lua
 {
-  "Chiarandini/telescope-latex-labels.nvim",
+  "Chiarandini/snacks-cached-headings.nvim",
   dependencies = {
-    "nvim-telescope/telescope.nvim",
-    "nvim-lua/plenary.nvim",
+    "folke/snacks.nvim",
     "Chiarandini/latex-nav-core.nvim",
   },
 }

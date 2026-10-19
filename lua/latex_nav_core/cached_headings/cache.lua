@@ -1,11 +1,32 @@
+-- On-disk heading cache. Format:
+--
+--   # v3
+--   # sig:<parser.signature of the scan options>
+--   # dep:<path relative to the root's directory>=<mtime>
+--   <source_file>|<line>|<level>|<kind>|<starred 0/1>|<title, %XX-escaped>|<text>
+--
+-- `text` is last so it may contain `|`; `title` is escaped for the same reason.
+
 local M = {}
+
+local VERSION = "# v3"
+
+---@class LatexNavCore.HeadingsCacheMeta
+---@field sig  string                  Signature the entries were scanned with.
+---@field deps table<string, integer>  Included file (relative to the root's directory) -> mtime.
+
+local function escape(s)
+  return (s:gsub("[%%|\n]", function(c) return string.format("%%%02X", c:byte()) end))
+end
+
+local function unescape(s)
+  return (s:gsub("%%(%x%x)", function(hex) return string.char(tonumber(hex, 16)) end))
+end
 
 ---Return the path where the cache file for `filepath` should be stored.
 ---
 ---  "local"  -> same directory as the file, hidden: .filename.ext.headings
 ---  "global" -> stdpath("data")/cached_headings/<sha256>.headings
----              The sha256 of the absolute filepath is used so any path length
----              and character set is handled safely.
 ---
 ---@param filepath string  Absolute path to the source file.
 ---@param strategy string  "local" | "global"
@@ -14,132 +35,77 @@ M.get_cache_path = function(filepath, strategy)
   return require("latex_nav_core.cache").get_cache_path(filepath, strategy, "cached_headings", ".headings")
 end
 
----Read a cache file and return its entries.
----
----Supports two cache formats:
----  v1 (legacy): lines are  "line_num|level|text"
----  v2 (phase 2): first line is "# v2", then optional "# dep:path=mtime" metadata,
----                then data lines "source_file|line_num|level|text"
----
----For v2 caches, if root_dir is provided, dependency mtimes are validated.
----Returns nil if the file does not exist OR if any dependency has changed.
----
+---Read a cache file. Returns nil when the file is missing, was written by an
+---older format, was scanned with a different signature, or when an included
+---file has changed on disk since.
 ---@param cache_path string
----@param root_dir string|nil  Project root dir, used for v2 mtime validation.
----@return table|nil  List of entries, or nil if missing/stale.
----@return boolean    True when the cache was in v2 format, false otherwise.
-M.read_cache = function(cache_path, root_dir)
+---@param sig        string  Expected signature (`parser.signature(opts)`).
+---@param root_dir   string  Directory the `dep:` paths are relative to.
+---@return LatexNavCore.Heading[]|nil
+---@return LatexNavCore.HeadingsCacheMeta|nil
+M.read_cache = function(cache_path, sig, root_dir)
   local file = io.open(cache_path, "r")
-  if not file then
-    return nil, false
-  end
-
-  local first_line = file:read("*l")
-  if not first_line then
+  if not file then return nil end
+  if file:read("*l") ~= VERSION then
     file:close()
-    return {}, false
+    return nil
   end
 
-  -- ── v2 format ─────────────────────────────────────────────────────────────
-  if first_line == "# v2" then
-    local deps    = {}
-    local entries = {}
-
-    for raw in file:lines() do
-      if raw:sub(1, 6) == "# dep:" then
-        -- Parse:  # dep:relative/path.tex=1234567890
-        local rel_path, mtime_str = raw:sub(7):match("^(.+)=(%d+)$")
-        if rel_path then
-          deps[rel_path] = tonumber(mtime_str)
-        end
-      elseif raw:sub(1, 1) ~= "#" then
-        -- Data line:  source_file|line_num|level|text
-        -- source_file may be empty (root file entries start with "|").
-        local source, line_num, level, text = raw:match("^(.-)|(%d+)|(%d+)|(.+)$")
-        if line_num then
-          table.insert(entries, {
-            source_file = source,
-            line        = tonumber(line_num),
-            level       = tonumber(level),
-            text        = text,
-          })
-        end
-      end
-    end
-
-    file:close()
-
-    -- Validate dependency mtimes if a root directory was supplied
-    if root_dir then
-      for rel_path, stored_mtime in pairs(deps) do
-        local abs_path      = root_dir .. "/" .. rel_path
-        local current_mtime = vim.fn.getftime(abs_path)
-        if current_mtime ~= stored_mtime then
-          return nil, true  -- stale: force rescan
-        end
-      end
-    end
-
-    return entries, true
-  end
-
-  -- ── v1 format (legacy) ────────────────────────────────────────────────────
+  local meta    = { sig = nil, deps = {} }
   local entries = {}
-
-  local function process_v1_line(raw)
-    if raw:sub(1, 1) ~= "#" then
-      local line_num, level, text = raw:match("^(%d+)|(%d+)|(.+)$")
-      if line_num then
+  for raw in file:lines() do
+    if vim.startswith(raw, "# sig:") then
+      meta.sig = raw:sub(7)
+    elseif vim.startswith(raw, "# dep:") then
+      local rel_path, mtime = raw:sub(7):match("^(.+)=(%-?%d+)$")
+      if rel_path then meta.deps[rel_path] = tonumber(mtime) end
+    else
+      local source, line, level, kind, starred, title, text =
+        raw:match("^(.-)|(%d+)|(%d+)|(%w+)|([01])|(.-)|(.+)$")
+      if line then
         table.insert(entries, {
-          line  = tonumber(line_num),
-          level = tonumber(level),
-          text  = text,
+          source_file = source,
+          line        = tonumber(line),
+          level       = tonumber(level),
+          kind        = kind,
+          starred     = starred == "1",
+          title       = unescape(title),
+          text        = text,
         })
       end
     end
   end
-
-  process_v1_line(first_line)  -- first line already consumed above
-  for raw in file:lines() do
-    process_v1_line(raw)
-  end
-
   file:close()
-  return entries, false
+
+  if meta.sig ~= sig then return nil end
+  for rel_path, mtime in pairs(meta.deps) do
+    if vim.fn.getftime(root_dir .. "/" .. rel_path) ~= mtime then return nil end
+  end
+  return entries, meta
 end
 
----Write a list of heading entries to a cache file.
----
----When `deps` is provided (non-nil), writes v2 format with metadata.
----Otherwise writes the legacy v1 format for backward compatibility.
----
+---Write heading entries and their metadata to a cache file.
 ---@param cache_path string
----@param entries table  List of { line, level, text } or { source_file, line, level, text }
----@param deps table|nil  Optional dependency map { [rel_path] = mtime }
----@return boolean, string|nil  success, error_message
-M.write_cache = function(cache_path, entries, deps)
+---@param entries    LatexNavCore.Heading[]
+---@param meta       LatexNavCore.HeadingsCacheMeta
+---@return boolean ok
+---@return string|nil err
+M.write_cache = function(cache_path, entries, meta)
+  -- Built before opening so a bad entry raises without truncating the cache.
+  local out = { VERSION, "# sig:" .. meta.sig }
+  for rel_path, mtime in pairs(meta.deps) do
+    table.insert(out, string.format("# dep:%s=%d", rel_path, mtime))
+  end
+  for _, e in ipairs(entries) do
+    table.insert(out, string.format("%s|%d|%d|%s|%d|%s|%s",
+      e.source_file or "", e.line, e.level, e.kind, e.starred and 1 or 0, escape(e.title), e.text))
+  end
+
   local file = io.open(cache_path, "w")
   if not file then
     return false, "Could not open cache file for writing: " .. cache_path
   end
-
-  if deps ~= nil then
-    -- v2 format
-    file:write("# v2\n")
-    for rel_path, mtime in pairs(deps) do
-      file:write(string.format("# dep:%s=%d\n", rel_path, mtime))
-    end
-    for _, entry in ipairs(entries) do
-      local source = entry.source_file or ""
-      file:write(string.format("%s|%d|%d|%s\n", source, entry.line, entry.level, entry.text))
-    end
-  else
-    -- v1 format (original)
-    for _, entry in ipairs(entries) do
-      file:write(string.format("%d|%d|%s\n", entry.line, entry.level, entry.text))
-    end
-  end
-
+  file:write(table.concat(out, "\n"), "\n")
   file:close()
   return true, nil
 end
@@ -147,7 +113,7 @@ end
 ---Delete all cache files managed by this plugin.
 ---
 ---For the "global" strategy every *.headings file inside the cache directory
----is removed.  For "local" the files are scattered next to source files, so
+---is removed. For "local" the files are scattered next to source files, so
 ---enumeration is not feasible; the function returns an explanatory message.
 ---
 ---@param strategy string  "local" | "global"
