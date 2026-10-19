@@ -117,7 +117,8 @@ end
 ---enumeration is not feasible; the function returns an explanatory message.
 ---
 ---@param strategy string  "local" | "global"
----@return integer, string|nil  number of files deleted, error message or nil
+---@return integer count  Number of files deleted.
+---@return string|nil err
 M.wipe_all_caches = function(strategy)
   return require("latex_nav_core.cache").wipe_all_caches(strategy, "cached_headings", ".headings")
 end

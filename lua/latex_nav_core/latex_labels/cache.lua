@@ -44,7 +44,8 @@ end
 ---
 ---@param cache_path string
 ---@param entries table  List of { line, id, context, filename }
----@return boolean, string|nil  success, error_message
+---@return boolean ok
+---@return string|nil err
 M.write_cache = function(cache_path, entries)
   local file = io.open(cache_path, "w")
   if not file then
@@ -66,7 +67,8 @@ end
 ---Only supported for the "global" strategy.
 ---
 ---@param strategy string  "local" | "global"
----@return integer, string|nil  number of files deleted, error message or nil
+---@return integer count  Number of files deleted.
+---@return string|nil err
 M.wipe_all_caches = function(strategy)
   return require("latex_nav_core.cache").wipe_all_caches(strategy, "cached_labels", ".labels")
 end

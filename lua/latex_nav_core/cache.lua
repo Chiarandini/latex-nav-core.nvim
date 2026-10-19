@@ -32,7 +32,8 @@ end
 ---@param strategy string  "local" | "global"
 ---@param subdir   string  Subdirectory name under stdpath("data").
 ---@param ext      string  File extension including the dot (e.g. ".labels").
----@return integer, string|nil  number of files deleted, error message or nil
+---@return integer count  Number of files deleted.
+---@return string|nil err
 M.wipe_all_caches = function(strategy, subdir, ext)
   if strategy ~= "global" then
     return 0, "wipe_all is only supported for the 'global' cache strategy. "
